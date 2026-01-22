@@ -19,9 +19,25 @@ import seaborn as sns
 from train import train_model
 
 
+def find_existing_model(output_base_dir, model_name):
+    """Find existing trained model in output directory."""
+    output_base_dir = Path(output_base_dir)
+    if not output_base_dir.exists():
+        return None
+    
+    # Look for directories matching pattern: *_{model_name}
+    for dir_path in output_base_dir.iterdir():
+        if dir_path.is_dir() and dir_path.name.endswith(f"_{model_name}"):
+            results_file = dir_path / 'training_results.json'
+            if results_file.exists():
+                return dir_path
+    return None
+
+
 def compare_models(dataset_dir, output_base_dir, epochs=150, batch_size=16):
     """
     Train and compare multiple model architectures.
+    Skips models that are already trained in output_base_dir.
     
     Args:
         dataset_dir: Path to dataset
@@ -59,47 +75,89 @@ def compare_models(dataset_dir, output_base_dir, epochs=150, batch_size=16):
     print(f"Dataset: {dataset_dir}")
     print(f"Output base: {output_base_dir}")
     print(f"Timestamp: {timestamp}")
-    print(f"Models to train: {[m['name'] for m in models_config]}")
+    print(f"Models to compare: {[m['name'] for m in models_config]}")
     print()
     
-    # Train each model
+    # Check for existing models
+    print("Checking for existing trained models...")
+    for config in models_config:
+        model_name = config['name']
+        existing_dir = find_existing_model(output_base_dir, model_name)
+        if existing_dir:
+            print(f"  ✓ Found existing {model_name}: {existing_dir.name}")
+        else:
+            print(f"  ✗ Need to train {model_name}")
+    print()
+    
+    # Train or load each model
     for i, config in enumerate(models_config, 1):
         model_name = config['name']
         model_kwargs = config['kwargs']
         
-        print(f"\n{'='*70}")
-        print(f"TRAINING MODEL {i}/{len(models_config)}: {model_name.upper()}")
-        print(f"{'='*70}\n")
+        # Check if model already exists
+        existing_dir = find_existing_model(output_base_dir, model_name)
         
-        output_dir = output_base_dir / f"{timestamp}_{model_name}"
-        
-        try:
-            _, history, metrics = train_model(
-                dataset_dir=dataset_dir,
-                output_dir=output_dir,
-                model_name=model_name,
-                epochs=epochs,
-                batch_size=batch_size,
-                **model_kwargs
-            )
+        if existing_dir:
+            print(f"\n{'='*70}")
+            print(f"LOADING EXISTING MODEL {i}/{len(models_config)}: {model_name.upper()}")
+            print(f"{'='*70}")
+            print(f"Using: {existing_dir}")
             
-            # Load full results
-            with open(output_dir / 'training_results.json', 'r') as f:
-                full_results = json.load(f)
+            try:
+                with open(existing_dir / 'training_results.json', 'r') as f:
+                    full_results = json.load(f)
+                
+                # Extract metrics from full_results (they're at the top level)
+                results[model_name] = {
+                    'output_dir': str(existing_dir),
+                    'metrics': full_results.get('metrics', {}),  # Changed from 'test_metrics'
+                    'full_results': full_results,
+                    'success': True,
+                    'reused': True
+                }
+                print(f"✓ Loaded successfully")
+                
+            except Exception as e:
+                print(f"❌ Error loading {model_name}: {e}")
+                results[model_name] = {
+                    'success': False,
+                    'error': str(e)
+                }
+        else:
+            print(f"\n{'='*70}")
+            print(f"TRAINING MODEL {i}/{len(models_config)}: {model_name.upper()}")
+            print(f"{'='*70}\n")
             
-            results[model_name] = {
-                'output_dir': str(output_dir),
-                'metrics': metrics,
-                'full_results': full_results,
-                'success': True
-            }
+            output_dir = output_base_dir / f"{timestamp}_{model_name}"
             
-        except Exception as e:
-            print(f"\n❌ Error training {model_name}: {e}")
-            results[model_name] = {
-                'success': False,
-                'error': str(e)
-            }
+            try:
+                _, history, metrics = train_model(
+                    dataset_dir=dataset_dir,
+                    output_dir=output_dir,
+                    model_name=model_name,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    **model_kwargs
+                )
+                
+                # Load full results
+                with open(output_dir / 'training_results.json', 'r') as f:
+                    full_results = json.load(f)
+                
+                results[model_name] = {
+                    'output_dir': str(output_dir),
+                    'metrics': metrics,
+                    'full_results': full_results,
+                    'success': True,
+                    'reused': False
+                }
+                
+            except Exception as e:
+                print(f"\n❌ Error training {model_name}: {e}")
+                results[model_name] = {
+                    'success': False,
+                    'error': str(e)
+                }
     
     # Generate comparison report
     print("\n" + "="*70)
@@ -136,9 +194,14 @@ def plot_comparison(results, output_file):
     models = list(successful_models.keys())
     class_names = ['mining_emergence', 'human_activity', 'natural_change']
     
+    # Calculate macro F1 from per_class metrics
+    def get_macro_f1(metrics):
+        f1_scores = [metrics['per_class'][cn]['f1_score'] for cn in class_names]
+        return sum(f1_scores) / len(f1_scores)
+    
     # 1. Overall Accuracy Comparison
     val_accs = [r['full_results']['best_val_acc'] for r in successful_models.values()]
-    test_f1s = [r['metrics']['macro']['f1_score'] for r in successful_models.values()]
+    test_f1s = [get_macro_f1(r['metrics']) for r in successful_models.values()]
     params = [r['full_results']['model_params'] / 1000 for r in successful_models.values()]
     
     x = range(len(models))

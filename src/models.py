@@ -88,23 +88,33 @@ class EfficientNetBasic:
         # Split into two 3-channel groups if input has 6 channels
         if input_shape[-1] == 6:
             # First 3 channels (RGB-like)
-            x1 = layers.Lambda(lambda x: x[:, :, :, :3])(inputs)
+            x1 = layers.Lambda(lambda x: x[:, :, :, :3], name='split_t0')(inputs)
             # Last 3 channels (IR-like)
-            x2 = layers.Lambda(lambda x: x[:, :, :, 3:])(inputs)
+            x2 = layers.Lambda(lambda x: x[:, :, :, 3:], name='split_t1')(inputs)
             
-            # Process each group separately with EfficientNet
-            base_model1 = keras.applications.EfficientNetB0(
+            # Create two separate EfficientNet models with different names
+            # We do this by creating the models outside the functional API
+            # and calling them on the inputs
+            
+            # First branch
+            base_input1 = keras.Input(shape=(48, 48, 3))
+            base_features1 = keras.applications.EfficientNetB0(
                 include_top=False,
                 weights='imagenet',
-                input_shape=(48, 48, 3),
+                input_tensor=base_input1,
                 pooling='avg'
-            )
-            base_model2 = keras.applications.EfficientNetB0(
+            ).output
+            base_model1 = keras.Model(base_input1, base_features1, name='efficientnet_t0')
+            
+            # Second branch
+            base_input2 = keras.Input(shape=(48, 48, 3))
+            base_features2 = keras.applications.EfficientNetB0(
                 include_top=False,
                 weights='imagenet',
-                input_shape=(48, 48, 3),
+                input_tensor=base_input2,
                 pooling='avg'
-            )
+            ).output
+            base_model2 = keras.Model(base_input2, base_features2, name='efficientnet_t1')
             
             if freeze_backbone:
                 base_model1.trainable = False
