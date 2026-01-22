@@ -16,7 +16,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from train_new import train_model
+from train import train_model
 
 
 def compare_models(dataset_dir, output_base_dir, epochs=150, batch_size=16):
