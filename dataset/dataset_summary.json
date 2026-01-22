@@ -1,0 +1,29 @@
+{
+  "created_at": "2026-01-21T18:38:32.465645",
+  "total_samples": 749,
+  "splits": {
+    "train": 523,
+    "val": 111,
+    "test": 115
+  },
+  "label_distribution": {
+    "positive": 524,
+    "negative": 225
+  },
+  "category_distribution": {
+    "mining_emergence": 524,
+    "natural_change": 125,
+    "human_activity": 100
+  },
+  "change_type_distribution": {
+    "mining": 524,
+    "natural": 125,
+    "human_non_mining": 100
+  },
+  "geographic_bounds": {
+    "min_longitude": -79.01130320449585,
+    "max_longitude": -44.27944762533297,
+    "min_latitude": -19.737628892884015,
+    "max_latitude": 7.860428499799866
+  }
+}
